@@ -1,0 +1,131 @@
+@page "/ocr"
+@using OCR_poc.Services
+@inject OcrService OcrService
+@rendermode InteractiveServer
+
+<PageTitle>OCR Locatie van Herkomst</PageTitle>
+
+<h1>OCR Locatie van Herkomst POC</h1>
+
+<p>Upload an image of a form to extract the "Locatie van Herkomst" value.</p>
+
+<div class="mb-3">
+    <label for="imageUpload" class="form-label">Select an image</label>
+    <InputFile id="imageUpload" OnChange="HandleFileSelected" accept="image/*" class="form-control" />
+</div>
+
+@if (_isProcessing)
+{
+    <div class="alert alert-info">
+        Processing image...
+    </div>
+}
+
+@if (_errorMessage != null)
+{
+    <div class="alert alert-danger">
+        @_errorMessage
+    </div>
+}
+
+@if (_result != null)
+{
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <strong>Locatie van Herkomst</strong>
+                </div>
+                <div class="card-body">
+                    @if (_result.LocatieVanHerkomst != null)
+                    {
+                        <h2 class="text-success">@_result.LocatieVanHerkomst</h2>
+                        <p class="text-muted">This value was automatically extracted from the image.</p>
+                    }
+                    else
+                    {
+                        <p class="text-warning">Could not automatically detect "Locatie van Herkomst".</p>
+                        <p class="text-muted">Check the extracted text below to find it manually.</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <strong>All Extracted Text</strong>
+                </div>
+                <div class="card-body">
+                    @if (_result.AllExtractedText.Count > 0)
+                    {
+                        <ul class="list-group">
+                            @foreach (var line in _result.AllExtractedText)
+                            {
+                                <li class="list-group-item">@line</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No text was extracted from the image.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_uploadedImageDataUrl != null)
+{
+    <div class="mt-4">
+        <h4>Uploaded Image</h4>
+        <img src="@_uploadedImageDataUrl" alt="Uploaded image" class="img-fluid" style="max-height: 400px;" />
+    </div>
+}
+
+@code {
+    private bool _isProcessing;
+    private string? _errorMessage;
+    private OcrResult? _result;
+    private string? _uploadedImageDataUrl;
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        _isProcessing = true;
+        _errorMessage = null;
+        _result = null;
+        _uploadedImageDataUrl = null;
+
+        try
+        {
+            var file = e.File;
+
+            if (file.Size > 10 * 1024 * 1024) // 10MB limit
+            {
+                _errorMessage = "File size must be less than 10MB.";
+                return;
+            }
+
+            // Read the file for display
+            using var displayStream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await displayStream.CopyToAsync(memoryStream);
+
+            var bytes = memoryStream.ToArray();
+            _uploadedImageDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+
+            // Process with OCR
+            using var ocrStream = new MemoryStream(bytes);
+            _result = await OcrService.ExtractTextFromImageAsync(ocrStream);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error processing image: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+}
