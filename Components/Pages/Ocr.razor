@@ -3,11 +3,11 @@
 @inject OcrService OcrService
 @rendermode InteractiveServer
 
-<PageTitle>OCR Locatie van Herkomst</PageTitle>
+<PageTitle>OCR Form Extraction</PageTitle>
 
-<h1>OCR Locatie van Herkomst POC</h1>
+<h1>OCR Form Extraction POC</h1>
 
-<p>Upload an image of a form to extract the "Locatie van Herkomst" value.</p>
+<p>Upload an image of a form to extract Record ID, Locatie van Herkomst, and Weight.</p>
 
 <div class="mb-3">
     <label for="imageUpload" class="form-label">Select an image</label>
@@ -31,7 +31,25 @@
 @if (_result != null)
 {
     <div class="row mt-4">
-        <div class="col-md-6">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <strong>Record ID</strong>
+                </div>
+                <div class="card-body">
+                    @if (_result.RecordId != null)
+                    {
+                        <h3 class="text-success">@_result.RecordId</h3>
+                    }
+                    else
+                    {
+                        <p class="text-warning">Not detected</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
             <div class="card">
                 <div class="card-header">
                     <strong>Locatie van Herkomst</strong>
@@ -39,24 +57,42 @@
                 <div class="card-body">
                     @if (_result.LocatieVanHerkomst != null)
                     {
-                        <h2 class="text-success">@_result.LocatieVanHerkomst</h2>
-                        <p class="text-muted">This value was automatically extracted from the image.</p>
+                        <h3 class="text-success">@_result.LocatieVanHerkomst</h3>
                     }
                     else
                     {
-                        <p class="text-warning">Could not automatically detect "Locatie van Herkomst".</p>
-                        <p class="text-muted">Check the extracted text below to find it manually.</p>
+                        <p class="text-warning">Not detected</p>
                     }
                 </div>
             </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <strong>Weight (kg)</strong>
+                </div>
+                <div class="card-body">
+                    @if (_result.Weight != null)
+                    {
+                        <h3 class="text-success">@_result.Weight</h3>
+                    }
+                    else
+                    {
+                        <p class="text-warning">Not detected</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
             <div class="card">
                 <div class="card-header">
                     <strong>All Extracted Text</strong>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
                     @if (_result.AllExtractedText.Count > 0)
                     {
                         <ul class="list-group">
