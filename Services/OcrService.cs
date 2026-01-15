@@ -28,7 +28,7 @@ public partial class OcrService
 
         var allText = new List<string>();
         string? recordId = null;
-        string? locatieVanHerkomst = null;
+        string? supplierName = null;
         string? weight = null;
 
         if (result.Value.Read?.Blocks != null)
@@ -43,36 +43,48 @@ public partial class OcrService
                 allText.Add(line.Text);
                 var lowerText = line.Text.ToLowerInvariant();
 
-                // 1. Extract Record ID (starts with DE)
+                // 1. Extract Record ID - prioritize DE, AR, TL prefixes
                 if (recordId == null)
                 {
-                    var deMatch = RecordIdRegex().Match(line.Text);
-                    if (deMatch.Success)
+                    // First priority: look for DE, AR, or TL prefixed IDs
+                    var preferredMatch = PreferredRecordIdRegex().Match(line.Text);
+                    if (preferredMatch.Success)
                     {
-                        recordId = deMatch.Value;
+                        recordId = preferredMatch.Value;
                     }
                 }
 
-                // 2. Extract Locatie van herkomst (first line of address after the label)
-                if (locatieVanHerkomst == null && lowerText.Contains("locatie") && lowerText.Contains("herkomst"))
+                // 2. Extract Supplier Name (location name from "locatie van herkomst" section)
+                if (supplierName == null && lowerText.Contains("locatie") && lowerText.Contains("herkomst"))
                 {
-                    // Check the next line for the street address
-                    if (i + 1 < allLines.Count)
+                    // Look at subsequent lines for the supplier/location name
+                    // Skip street addresses (end with numbers) and postal codes (start with 4 digits)
+                    for (int j = i + 1; j < Math.Min(i + 4, allLines.Count); j++)
                     {
-                        var nextLine = allLines[i + 1].Text.Trim();
-                        // Make sure it looks like an address (contains street name, not just a label)
-                        if (IsLikelyStreetAddress(nextLine))
+                        var candidateLine = allLines[j].Text.Trim();
+                        if (IsLikelySupplierName(candidateLine))
                         {
-                            locatieVanHerkomst = nextLine;
+                            supplierName = candidateLine;
+                            break;
                         }
                     }
                 }
 
-                // 3. Extract Weight - look for patterns with "kg" or standalone numbers that could be weight
+                // 3. Extract Weight - prioritize "netto" (net weight), then other patterns
                 if (weight == null)
                 {
-                    // Look for weight in the "gewogen hoeveelheid" column or similar
-                    if (lowerText.Contains("gewogen") || lowerText.Contains("hoeveelheid"))
+                    // Priority 1: Look for "netto" (net weight - most accurate value)
+                    if (lowerText.Contains("netto"))
+                    {
+                        var nettoMatch = NettoWeightRegex().Match(line.Text);
+                        if (nettoMatch.Success)
+                        {
+                            weight = nettoMatch.Groups[1].Value;
+                        }
+                    }
+
+                    // Priority 2: Look for weight in the "gewogen hoeveelheid" column or similar
+                    if (weight == null && (lowerText.Contains("gewogen") || lowerText.Contains("hoeveelheid")))
                     {
                         var weightMatch = WeightNumberRegex().Match(line.Text);
                         if (weightMatch.Success)
@@ -85,11 +97,14 @@ public partial class OcrService
                         }
                     }
 
-                    // Also look for "kg" patterns anywhere
-                    var kgMatch = KgPatternRegex().Match(line.Text);
-                    if (kgMatch.Success)
+                    // Priority 3: Look for "kg" patterns anywhere
+                    if (weight == null)
                     {
-                        weight = kgMatch.Groups[1].Value;
+                        var kgMatch = KgPatternRegex().Match(line.Text);
+                        if (kgMatch.Success)
+                        {
+                            weight = kgMatch.Groups[1].Value;
+                        }
                     }
                 }
             }
@@ -112,38 +127,67 @@ public partial class OcrService
                     }
                 }
             }
+
+            // Fallback: if no preferred record ID (DE, AR, TL) was found, look for any two-letter prefix
+            if (recordId == null)
+            {
+                foreach (var line in allLines)
+                {
+                    var fallbackMatch = FallbackRecordIdRegex().Match(line.Text);
+                    if (fallbackMatch.Success)
+                    {
+                        recordId = fallbackMatch.Value;
+                        break;
+                    }
+                }
+            }
         }
 
         return new OcrResult
         {
             AllExtractedText = allText,
             RecordId = recordId,
-            LocatieVanHerkomst = locatieVanHerkomst,
+            SupplierName = supplierName,
             Weight = weight
         };
     }
 
-    private static bool IsLikelyStreetAddress(string text)
+    private static bool IsLikelySupplierName(string text)
     {
-        // Check if text looks like a street address
-        // Usually contains a street name with a number, or common Dutch street suffixes
-        var lower = text.ToLowerInvariant();
+        var trimmed = text.Trim();
 
-        // Common Dutch street patterns
-        if (lower.Contains("straat") || lower.Contains("weg") || lower.Contains("laan") ||
-            lower.Contains("plein") || lower.Contains("singel") || lower.Contains("kade") ||
-            lower.Contains("gracht") || lower.Contains("steeg") || lower.Contains("hof"))
-        {
-            return true;
-        }
+        // Skip empty or very short text
+        if (trimmed.Length < 3)
+            return false;
 
-        // Check if it has a number (typical for addresses)
-        return Regex.IsMatch(text, @"\d+");
+        // Skip if it's just numbers
+        if (Regex.IsMatch(trimmed, @"^\d+$"))
+            return false;
+
+        // Skip if it's a street address with house number at end (e.g., "Marinierstraat 4")
+        if (Regex.IsMatch(trimmed, @"\d+\s*$"))
+            return false;
+
+        // Skip if it's a Dutch postal code line (4 digits + 2 letters + optional city)
+        if (Regex.IsMatch(trimmed, @"^\d{4}\s*[A-Za-z]{2}"))
+            return false;
+
+        // Skip common label text
+        var lower = trimmed.ToLowerInvariant();
+        if (lower.Contains("straat + nr") || lower.Contains("postc") || lower.Contains("woonpl"))
+            return false;
+
+        // Accept location/supplier names (typically text without trailing numbers)
+        return true;
     }
 
-    // Regex for Record ID starting with DE followed by digits
-    [GeneratedRegex(@"DE\d{6,}", RegexOptions.IgnoreCase)]
-    private static partial Regex RecordIdRegex();
+    // Regex for preferred Record ID prefixes: DE, AR, or TL followed by digits (not followed by more letters)
+    [GeneratedRegex(@"\b(DE|AR|TL)\d{6,}(?![A-Za-z])", RegexOptions.IgnoreCase)]
+    private static partial Regex PreferredRecordIdRegex();
+
+    // Fallback regex for Record ID: any two letters followed by only digits (not followed by more letters)
+    [GeneratedRegex(@"\b[A-Za-z]{2}\d{6,}(?![A-Za-z])", RegexOptions.IgnoreCase)]
+    private static partial Regex FallbackRecordIdRegex();
 
     // Regex for weight numbers
     [GeneratedRegex(@"(\d+[,.]?\d*)\s*$")]
@@ -156,12 +200,16 @@ public partial class OcrService
     // Regex for standalone weight (large numbers, possibly handwritten totals)
     [GeneratedRegex(@"^(\d{3,5})$")]
     private static partial Regex StandaloneWeightRegex();
+
+    // Regex for "Netto" followed by number (e.g., "Netto 2130" or "Netto: 2130")
+    [GeneratedRegex(@"netto[:\s]*(\d+[,.]?\d*)", RegexOptions.IgnoreCase)]
+    private static partial Regex NettoWeightRegex();
 }
 
 public class OcrResult
 {
     public List<string> AllExtractedText { get; set; } = [];
     public string? RecordId { get; set; }
-    public string? LocatieVanHerkomst { get; set; }
+    public string? SupplierName { get; set; }
     public string? Weight { get; set; }
 }

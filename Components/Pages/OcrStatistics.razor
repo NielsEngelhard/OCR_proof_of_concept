@@ -61,7 +61,7 @@
         <div class="col-md-4">
             <div class="card">
                 <div class="card-header bg-primary text-white">
-                    <strong>Location Accuracy</strong>
+                    <strong>Supplier Name Accuracy</strong>
                 </div>
                 <div class="card-body text-center">
                     <h2 class="@(LocationPercentage >= 80 ? "text-success" : LocationPercentage >= 50 ? "text-warning" : "text-danger")">
@@ -100,7 +100,7 @@
                             <th>Filename</th>
                             <th>RecordId</th>
                             <th style="width: 50px; text-align: center;">OK?</th>
-                            <th>Location</th>
+                            <th>Supplier Name</th>
                             <th style="width: 50px; text-align: center;">OK?</th>
                             <th>Weight</th>
                             <th style="width: 50px; text-align: center;">OK?</th>
@@ -123,8 +123,8 @@
                                            checked="@item.RecordIdCorrect"
                                            @onchange="@(e => UpdateRecordIdCorrect(index, (bool)(e.Value ?? false)))" />
                                 </td>
-                                <td class="@(item.Result.LocatieVanHerkomst == null ? "text-muted" : "")">
-                                    @(item.Result.LocatieVanHerkomst ?? "-")
+                                <td class="@(item.Result.SupplierName == null ? "text-muted" : "")">
+                                    @(item.Result.SupplierName ?? "-")
                                 </td>
                                 <td style="text-align: center;">
                                     <input type="checkbox" class="form-check-input"
@@ -172,7 +172,7 @@
                             <strong>RecordId:</strong> @(_selectedImage.Result.RecordId ?? "-")
                         </div>
                         <div class="col-4">
-                            <strong>Location:</strong> @(_selectedImage.Result.LocatieVanHerkomst ?? "-")
+                            <strong>Supplier Name:</strong> @(_selectedImage.Result.SupplierName ?? "-")
                         </div>
                         <div class="col-4">
                             <strong>Weight:</strong> @(_selectedImage.Result.Weight ?? "-")

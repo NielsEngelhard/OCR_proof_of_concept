@@ -7,7 +7,7 @@
 
 <h1>OCR Form Extraction POC</h1>
 
-<p>Upload an image of a form to extract Record ID, Locatie van Herkomst, and Weight.</p>
+<p>Upload an image of a form to extract Record ID, Supplier Name, and Weight.</p>
 
 <div class="mb-3">
     <label for="imageUpload" class="form-label">Select an image</label>
@@ -52,12 +52,12 @@
         <div class="col-md-4">
             <div class="card">
                 <div class="card-header">
-                    <strong>Locatie van Herkomst</strong>
+                    <strong>Supplier Name</strong>
                 </div>
                 <div class="card-body">
-                    @if (_result.LocatieVanHerkomst != null)
+                    @if (_result.SupplierName != null)
                     {
-                        <h3 class="text-success">@_result.LocatieVanHerkomst</h3>
+                        <h3 class="text-success">@_result.SupplierName</h3>
                     }
                     else
                     {
