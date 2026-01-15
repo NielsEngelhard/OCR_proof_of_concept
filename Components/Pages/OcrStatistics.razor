@@ -1,0 +1,322 @@
+@page "/ocr-statistics"
+@using OCR_poc.Services
+@inject OcrService OcrService
+@rendermode InteractiveServer
+
+<PageTitle>OCR Statistics</PageTitle>
+
+<h1>Bulk OCR Statistics</h1>
+
+<p>Upload multiple images (up to 100) to test OCR extraction accuracy.</p>
+
+<div class="mb-3">
+    <label for="bulkUpload" class="form-label">Select images</label>
+    <InputFile id="bulkUpload" OnChange="HandleFilesSelected" accept="image/*" multiple class="form-control" />
+</div>
+
+@if (_selectedFiles.Count > 0 && !_isProcessing && _results.Count == 0)
+{
+    <div class="alert alert-info">
+        @_selectedFiles.Count file(s) selected.
+        <button class="btn btn-primary ms-3" @onclick="ProcessAllFiles">Process All</button>
+    </div>
+}
+
+@if (_isProcessing)
+{
+    <div class="alert alert-info">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+            Processing: @_processedCount / @_totalCount files...
+        </div>
+        <div class="progress mt-2">
+            <div class="progress-bar" role="progressbar" style="width: @((_processedCount * 100 / Math.Max(_totalCount, 1)))%"></div>
+        </div>
+    </div>
+}
+
+@if (_errorMessage != null)
+{
+    <div class="alert alert-danger">
+        @_errorMessage
+    </div>
+}
+
+@if (_results.Count > 0)
+{
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <strong>RecordId Accuracy</strong>
+                </div>
+                <div class="card-body text-center">
+                    <h2 class="@(RecordIdPercentage >= 80 ? "text-success" : RecordIdPercentage >= 50 ? "text-warning" : "text-danger")">
+                        @RecordIdCorrectCount / @_results.Count
+                    </h2>
+                    <p class="mb-0">@RecordIdPercentage.ToString("F1")%</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <strong>Location Accuracy</strong>
+                </div>
+                <div class="card-body text-center">
+                    <h2 class="@(LocationPercentage >= 80 ? "text-success" : LocationPercentage >= 50 ? "text-warning" : "text-danger")">
+                        @LocationCorrectCount / @_results.Count
+                    </h2>
+                    <p class="mb-0">@LocationPercentage.ToString("F1")%</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <strong>Weight Accuracy</strong>
+                </div>
+                <div class="card-body text-center">
+                    <h2 class="@(WeightPercentage >= 80 ? "text-success" : WeightPercentage >= 50 ? "text-warning" : "text-danger")">
+                        @WeightCorrectCount / @_results.Count
+                    </h2>
+                    <p class="mb-0">@WeightPercentage.ToString("F1")%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <strong>Results</strong>
+            <button class="btn btn-sm btn-outline-secondary float-end" @onclick="ClearResults">Clear All</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>Filename</th>
+                            <th>RecordId</th>
+                            <th style="width: 50px; text-align: center;">OK?</th>
+                            <th>Location</th>
+                            <th style="width: 50px; text-align: center;">OK?</th>
+                            <th>Weight</th>
+                            <th style="width: 50px; text-align: center;">OK?</th>
+                            <th style="width: 80px;">Image</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 0; i < _results.Count; i++)
+                        {
+                            var item = _results[i];
+                            var index = i;
+                            <tr>
+                                <td>@(i + 1)</td>
+                                <td title="@item.FileName">@TruncateFileName(item.FileName)</td>
+                                <td class="@(item.Result.RecordId == null ? "text-muted" : "")">
+                                    @(item.Result.RecordId ?? "-")
+                                </td>
+                                <td style="text-align: center;">
+                                    <input type="checkbox" class="form-check-input"
+                                           checked="@item.RecordIdCorrect"
+                                           @onchange="@(e => UpdateRecordIdCorrect(index, (bool)(e.Value ?? false)))" />
+                                </td>
+                                <td class="@(item.Result.LocatieVanHerkomst == null ? "text-muted" : "")">
+                                    @(item.Result.LocatieVanHerkomst ?? "-")
+                                </td>
+                                <td style="text-align: center;">
+                                    <input type="checkbox" class="form-check-input"
+                                           checked="@item.LocationCorrect"
+                                           @onchange="@(e => UpdateLocationCorrect(index, (bool)(e.Value ?? false)))" />
+                                </td>
+                                <td class="@(item.Result.Weight == null ? "text-muted" : "")">
+                                    @(item.Result.Weight ?? "-")
+                                </td>
+                                <td style="text-align: center;">
+                                    <input type="checkbox" class="form-check-input"
+                                           checked="@item.WeightCorrect"
+                                           @onchange="@(e => UpdateWeightCorrect(index, (bool)(e.Value ?? false)))" />
+                                </td>
+                                <td>
+                                    @if (item.ImageDataUrl != null)
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ShowImage(item)">View</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_selectedImage != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@_selectedImage.FileName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseImage"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img src="@_selectedImage.ImageDataUrl" alt="@_selectedImage.FileName" class="img-fluid" style="max-height: 70vh;" />
+                </div>
+                <div class="modal-footer">
+                    <div class="row w-100">
+                        <div class="col-4">
+                            <strong>RecordId:</strong> @(_selectedImage.Result.RecordId ?? "-")
+                        </div>
+                        <div class="col-4">
+                            <strong>Location:</strong> @(_selectedImage.Result.LocatieVanHerkomst ?? "-")
+                        </div>
+                        <div class="col-4">
+                            <strong>Weight:</strong> @(_selectedImage.Result.Weight ?? "-")
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<IBrowserFile> _selectedFiles = new();
+    private List<BulkOcrItem> _results = new();
+    private bool _isProcessing;
+    private int _processedCount;
+    private int _totalCount;
+    private string? _errorMessage;
+    private BulkOcrItem? _selectedImage;
+
+    private int RecordIdCorrectCount => _results.Count(r => r.RecordIdCorrect);
+    private int LocationCorrectCount => _results.Count(r => r.LocationCorrect);
+    private int WeightCorrectCount => _results.Count(r => r.WeightCorrect);
+
+    private double RecordIdPercentage => _results.Count > 0 ? (RecordIdCorrectCount * 100.0 / _results.Count) : 0;
+    private double LocationPercentage => _results.Count > 0 ? (LocationCorrectCount * 100.0 / _results.Count) : 0;
+    private double WeightPercentage => _results.Count > 0 ? (WeightCorrectCount * 100.0 / _results.Count) : 0;
+
+    private void HandleFilesSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFiles = e.GetMultipleFiles(100).ToList();
+        _results.Clear();
+        _errorMessage = null;
+    }
+
+    private async Task ProcessAllFiles()
+    {
+        if (_selectedFiles.Count == 0) return;
+
+        _isProcessing = true;
+        _errorMessage = null;
+        _results.Clear();
+        _processedCount = 0;
+        _totalCount = _selectedFiles.Count;
+
+        try
+        {
+            foreach (var file in _selectedFiles)
+            {
+                try
+                {
+                    if (file.Size > 10 * 1024 * 1024)
+                    {
+                        _results.Add(new BulkOcrItem
+                        {
+                            FileName = file.Name,
+                            Result = new OcrResult { AllExtractedText = ["Error: File too large (>10MB)"] }
+                        });
+                        continue;
+                    }
+
+                    using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+                    using var memoryStream = new MemoryStream();
+                    await stream.CopyToAsync(memoryStream);
+
+                    var bytes = memoryStream.ToArray();
+                    var imageDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+
+                    using var ocrStream = new MemoryStream(bytes);
+                    var result = await OcrService.ExtractTextFromImageAsync(ocrStream);
+
+                    _results.Add(new BulkOcrItem
+                    {
+                        FileName = file.Name,
+                        Result = result,
+                        ImageDataUrl = imageDataUrl
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _results.Add(new BulkOcrItem
+                    {
+                        FileName = file.Name,
+                        Result = new OcrResult { AllExtractedText = [$"Error: {ex.Message}"] }
+                    });
+                }
+
+                _processedCount++;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error processing files: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            _selectedFiles.Clear();
+        }
+    }
+
+    private void UpdateRecordIdCorrect(int index, bool value)
+    {
+        if (index >= 0 && index < _results.Count)
+        {
+            _results[index].RecordIdCorrect = value;
+        }
+    }
+
+    private void UpdateLocationCorrect(int index, bool value)
+    {
+        if (index >= 0 && index < _results.Count)
+        {
+            _results[index].LocationCorrect = value;
+        }
+    }
+
+    private void UpdateWeightCorrect(int index, bool value)
+    {
+        if (index >= 0 && index < _results.Count)
+        {
+            _results[index].WeightCorrect = value;
+        }
+    }
+
+    private void ShowImage(BulkOcrItem item)
+    {
+        _selectedImage = item;
+    }
+
+    private void CloseImage()
+    {
+        _selectedImage = null;
+    }
+
+    private void ClearResults()
+    {
+        _results.Clear();
+        _selectedFiles.Clear();
+    }
+
+    private static string TruncateFileName(string fileName)
+    {
+        return fileName.Length > 25 ? fileName[..22] + "..." : fileName;
+    }
+}
