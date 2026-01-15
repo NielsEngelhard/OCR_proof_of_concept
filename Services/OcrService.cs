@@ -8,6 +8,53 @@ public partial class OcrService
 {
     private readonly ImageAnalysisClient _client;
 
+    // Known supplier names for matching
+    private static readonly string[] KnownSuppliers =
+    [
+        "2Switch Arnhem",
+        "Aanbiedstation Micro-Zevenaar",
+        "Aanbiedstation 's-Heerenberg",
+        "ABS Doornenburg - VOS Transport VOF",
+        "ABS Huissen - Heijting Milieuservice",
+        "ABS Huissen - Van Dalen BV",
+        "Afvalbrengstation Arnhem Noord",
+        "Afvalbrengstation Arnhem Zuid",
+        "De Coolhof",
+        "Gemeentewerf Beuningen",
+        "Gemeentewerf De Moestuin",
+        "Gemeentewerf Dieren",
+        "Gemeentewerf Duiven",
+        "Gemeentewerf Millingen aan de Rijn",
+        "Gemeentewerf Rijnwaarden",
+        "Heijting Milieuservice Oosterhout BV",
+        "Kringloop 2Switch Dieren",
+        "Kringloop Het Goed Nijmegen",
+        "Kringloopwinkel 2Switch Elst",
+        "Kringloopwinkel 2Switch Tiel",
+        "Kringloopwinkel 2Switch Westervoort",
+        "Milieustation Gennep",
+        "Milieustraat Albion",
+        "Milieustraat Andelst",
+        "Milieustraat Bijsterhuizen",
+        "Milieustraat Boekel",
+        "Milieustraat Druten",
+        "Milieustraat Elst",
+        "Milieustraat Groesbeek",
+        "Milieustraat Haps",
+        "Milieustraat Malden",
+        "Milieustraat Mook en Middelaar",
+        "Milieustraat Nijmegen",
+        "Milieustraat Oss",
+        "Milieustraat Rosmalen",
+        "Milieustraat Treurenburg",
+        "Milieustraat Uden",
+        "Milieustraat Waalwijk",
+        "Stichting Actief",
+        "Stichting Actief Cuijk",
+        "Stichting Actief - Gem. Bergen",
+        "Stichting Aktief Groep"
+    ];
+
     public OcrService(IConfiguration configuration)
     {
         var endpoint = configuration["AzureComputerVision:Endpoint"]
@@ -54,19 +101,13 @@ public partial class OcrService
                     }
                 }
 
-                // 2. Extract Supplier Name (location name from "locatie van herkomst" section)
-                if (supplierName == null && lowerText.Contains("locatie") && lowerText.Contains("herkomst"))
+                // 2. Extract Supplier Name by matching against known suppliers list
+                if (supplierName == null)
                 {
-                    // Look at subsequent lines for the supplier/location name
-                    // Skip street addresses (end with numbers) and postal codes (start with 4 digits)
-                    for (int j = i + 1; j < Math.Min(i + 4, allLines.Count); j++)
+                    var matchedSupplier = FindMatchingSupplier(line.Text);
+                    if (matchedSupplier != null)
                     {
-                        var candidateLine = allLines[j].Text.Trim();
-                        if (IsLikelySupplierName(candidateLine))
-                        {
-                            supplierName = candidateLine;
-                            break;
-                        }
+                        supplierName = matchedSupplier;
                     }
                 }
 
@@ -152,33 +193,75 @@ public partial class OcrService
         };
     }
 
-    private static bool IsLikelySupplierName(string text)
+    private static string? FindMatchingSupplier(string text)
     {
-        var trimmed = text.Trim();
+        var lowerText = text.ToLowerInvariant();
 
-        // Skip empty or very short text
-        if (trimmed.Length < 3)
-            return false;
+        // Priority 1: Exact/full supplier name match
+        foreach (var supplier in KnownSuppliers)
+        {
+            if (lowerText.Contains(supplier.ToLowerInvariant()))
+            {
+                return supplier;
+            }
+        }
 
-        // Skip if it's just numbers
-        if (Regex.IsMatch(trimmed, @"^\d+$"))
-            return false;
+        // Priority 2: Match on key location identifiers (city names, specific words)
+        // Extract the distinguishing part of each supplier (usually the last word/city name)
+        foreach (var supplier in KnownSuppliers)
+        {
+            var keywords = GetSupplierKeywords(supplier);
+            foreach (var keyword in keywords)
+            {
+                // Check if the keyword appears as a whole word in the text
+                if (Regex.IsMatch(lowerText, $@"\b{Regex.Escape(keyword.ToLowerInvariant())}\b"))
+                {
+                    return supplier;
+                }
+            }
+        }
 
-        // Skip if it's a street address with house number at end (e.g., "Marinierstraat 4")
-        if (Regex.IsMatch(trimmed, @"\d+\s*$"))
-            return false;
+        return null;
+    }
 
-        // Skip if it's a Dutch postal code line (4 digits + 2 letters + optional city)
-        if (Regex.IsMatch(trimmed, @"^\d{4}\s*[A-Za-z]{2}"))
-            return false;
+    private static List<string> GetSupplierKeywords(string supplier)
+    {
+        // Extract meaningful keywords from supplier names for flexible matching
+        // Focus on city names and unique identifiers
+        var keywords = new List<string>();
 
-        // Skip common label text
-        var lower = trimmed.ToLowerInvariant();
-        if (lower.Contains("straat + nr") || lower.Contains("postc") || lower.Contains("woonpl"))
-            return false;
+        // Known city/location names that appear in supplier names
+        string[] locationKeywords =
+        [
+            "Arnhem", "Zevenaar", "'s-Heerenberg", "Heerenberg", "Doornenburg", "Huissen",
+            "Beuningen", "Dieren", "Duiven", "Millingen", "Rijnwaarden", "Oosterhout",
+            "Nijmegen", "Elst", "Tiel", "Westervoort", "Gennep", "Albion", "Andelst",
+            "Bijsterhuizen", "Boekel", "Druten", "Groesbeek", "Haps", "Malden", "Mook",
+            "Middelaar", "Oss", "Rosmalen", "Treurenburg", "Uden", "Waalwijk", "Cuijk",
+            "Bergen", "Coolhof", "Moestuin", "Maashorst"
+        ];
 
-        // Accept location/supplier names (typically text without trailing numbers)
-        return true;
+        foreach (var location in locationKeywords)
+        {
+            if (supplier.Contains(location, StringComparison.OrdinalIgnoreCase))
+            {
+                keywords.Add(location);
+            }
+        }
+
+        // Also add unique identifiers
+        if (supplier.Contains("2Switch")) keywords.Add("2Switch");
+        if (supplier.Contains("Het Goed")) keywords.Add("Het Goed");
+        if (supplier.Contains("Actief") || supplier.Contains("Aktief"))
+        {
+            keywords.Add("Actief");
+            keywords.Add("Aktief");
+        }
+        if (supplier.Contains("Heijting")) keywords.Add("Heijting");
+        if (supplier.Contains("VOS Transport")) keywords.Add("VOS");
+        if (supplier.Contains("Van Dalen")) keywords.Add("Van Dalen");
+
+        return keywords;
     }
 
     // Regex for preferred Record ID prefixes: DE, AR, or TL followed by digits (not followed by more letters)
